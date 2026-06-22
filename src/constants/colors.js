@@ -1,46 +1,45 @@
-// Two full palettes — Forest Green theme
-// Replaces dark navy blue with deep forest greens
+// Two full palettes — Dark Teal theme (inspired by Muslim Pro screenshot)
 
 export const darkColors = {
-  // Backgrounds — deep forest greens instead of navy blues
-  background:   '#060F08',   // near-black forest green
-  card:         '#0D1F0F',   // dark forest card
-  cardLight:    '#152718',   // slightly lighter forest
-  cardGlow:     '#1A3020',   // forest glow
+  // Backgrounds — deep dark teal from screenshot hero area
+  background:   '#071C1E',   // near-black dark teal
+  card:         '#101C1E',   // dark teal card
+  cardLight:    '#162425',   // slightly lighter teal card
+  cardGlow:     '#1A2E30',   // teal glow
 
-  // Brand — keep gold, it's beautiful on forest green
+  // Brand — gold stays, pairs beautifully with dark teal
   primary:      '#C9A84C',   // Gold (unchanged)
   primaryLight: '#E8C875',
   primaryDim:   '#C9A84C30',
 
-  // Accent — shift blue/purple to forest-complementary tones
-  blue:         '#4FC3A0',   // teal-green instead of sky blue
-  purple:       '#7C9A4D',   // olive-green instead of purple
-  night:        '#0F2A15',   // deep forest for next-prayer card
+  // Accent — teal/olive from screenshot
+  blue:         '#1AB87A',   // teal-green (bottom nav active + "See More" color)
+  purple:       '#7A8830',   // olive (arc right-side tone)
+  night:        '#091A1C',   // deep teal for next-prayer card
 
   // Text
-  text:         '#F0FFF2',   // slightly green-tinted white
-  textSecondary:'#7AAA82',   // muted forest green
-  textMuted:    '#3D6645',   // dark muted green
+  text:         '#FFFFFF',   // pure white (screenshot text)
+  textSecondary:'#8AA4A6',   // muted teal-gray (prayer time secondary text)
+  textMuted:    '#3D5A5C',   // dark muted teal
 
   // UI
-  border:       '#1E4028',   // forest border
-  divider:      '#162E1C',   // forest divider
+  border:       '#1A3436',   // teal border
+  divider:      '#122628',   // dark teal divider
   overlay:      'rgba(0,0,0,0.6)',
 
   // Status
-  success:      '#4CAF50',
-  successDim:   '#4CAF5020',
+  success:      '#1AB87A',   // teal green (matches accent)
+  successDim:   '#1AB87A20',
   warning:      '#FF9800',
   danger:       '#F44336',
 };
 
 export const lightColors = {
-  // Backgrounds — light forest / nature feel
-  background:   '#F2FAF3',   // soft mint white
+  // Backgrounds — light teal/mint for light mode
+  background:   '#F0F8F8',   // soft teal white
   card:         '#FFFFFF',
-  cardLight:    '#EBF5EC',   // very light green tint
-  cardGlow:     '#DDEEDE',   // light forest glow
+  cardLight:    '#E8F5F5',   // very light teal tint
+  cardGlow:     '#D4ECEC',   // light teal glow
 
   // Brand
   primary:      '#A9852E',   // Gold (unchanged)
@@ -48,23 +47,23 @@ export const lightColors = {
   primaryDim:   '#A9852E22',
 
   // Accent
-  blue:         '#2E8B57',   // sea green instead of sky blue
-  purple:       '#5A7A2E',   // olive instead of purple
-  night:        '#D8EFD8',   // soft green card equivalent
+  blue:         '#0D8A68',   // darker teal for light mode readability
+  purple:       '#5A6A20',   // olive for light mode
+  night:        '#D8ECEC',   // soft teal card equivalent
 
   // Text
-  text:         '#0D2410',   // deep forest text
-  textSecondary:'#3D6645',   // muted forest text
-  textMuted:    '#7AAA82',   // light forest muted
+  text:         '#071C1E',   // deep dark teal text
+  textSecondary:'#2E5055',   // muted teal text
+  textMuted:    '#5A7880',   // light teal muted
 
   // UI
-  border:       '#C8E6C9',   // light green border
-  divider:      '#D8EFD8',   // soft green divider
+  border:       '#B8D8DA',   // light teal border
+  divider:      '#D0E8E8',   // soft teal divider
   overlay:      'rgba(0,0,0,0.45)',
 
   // Status
-  success:      '#388E3C',
-  successDim:   '#4CAF5020',
+  success:      '#0D8A68',
+  successDim:   '#1AB87A20',
   warning:      '#F57C00',
   danger:       '#D32F2F',
 };
