@@ -8,7 +8,7 @@ import * as Location from 'expo-location';
 import { useTheme } from '../constants/ThemeContext';
 import {
   calculatePrayerTimes, formatTime, getCountdown,
-  getNextPrayer, getTomorrowFajr, ALL_PRAYERS, TRACKABLE_PRAYERS, PRAYER_META,
+  getNextPrayer, getCurrentPrayer, getTomorrowFajr, ALL_PRAYERS, TRACKABLE_PRAYERS, PRAYER_META,
 } from '../utils/prayerTimes';
 import { getCompletedPrayers, togglePrayer, getNotificationsEnabled } from '../utils/storage';
 import {
@@ -72,6 +72,8 @@ export default function HomeScreen() {
   const [error,            setError]            = useState(null);
   const [nextPrayer,       setNextPrayer]       = useState(null);
   const [countdown,        setCountdown]        = useState('--:--:--');
+  const [currentPrayer,    setCurrentPrayer]    = useState(null);
+  const [endCountdown,     setEndCountdown]     = useState('--:--:--');
   const [tomorrowFajr,     setTomorrowFajr]     = useState(null);
   const [locationName,     setLocationName]     = useState(null);
 
@@ -135,6 +137,9 @@ export default function HomeScreen() {
       const next = getNextPrayer(times, coordsRef.current?.latitude, coordsRef.current?.longitude);
       setNextPrayer(next);
       if (next) setCountdown(getCountdown(next.time));
+      const curr = getCurrentPrayer(times, tomorrowFajr);
+      setCurrentPrayer(curr);
+      if (curr?.endsAt) setEndCountdown(getCountdown(curr.endsAt));
     }, 1000);
     return () => clearInterval(tick);
   }, []);
@@ -204,6 +209,8 @@ export default function HomeScreen() {
             time={formatTime(nextPrayer.time)}
             endTime={getEndTime(nextPrayer.name, prayerTimes)}
             countdown={countdown}
+            currentPrayer={currentPrayer}
+            endCountdown={endCountdown}
             meta={PRAYER_META[nextPrayer.name]}
             onLocationPress={load}
             hijriDate={hijriDate}
