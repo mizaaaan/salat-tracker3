@@ -93,13 +93,9 @@ export default function PrayerCard({
         {/* ── Content row ── */}
         <View style={styles.row}>
 
-          {/* Icon with layered glow */}
-          <View style={styles.iconGlowOuter}>
-            <View style={[styles.iconGlowMid, { backgroundColor: meta.color + '18' }]}>
-              <View style={[styles.iconInner, { backgroundColor: meta.color + '28', borderColor: meta.color + '35' }]}>
-                <Text style={styles.iconEmoji}>{meta.icon}</Text>
-              </View>
-            </View>
+          {/* Icon — single clean container, no layered glow */}
+          <View style={[styles.iconBox, { backgroundColor: meta.color + '20', borderColor: meta.color + '30' }]}>
+            <Text style={styles.iconEmoji}>{meta.icon}</Text>
           </View>
 
           {/* Name + Arabic */}
@@ -159,15 +155,9 @@ const styles = StyleSheet.create({
   sunriseWrap: { opacity: 0.52 },
 
   card: {
-    borderRadius:  20,
+    borderRadius:  18,
     marginBottom:  10,
     overflow:      'hidden',
-    // Card shadow
-    shadowColor:   '#000',
-    shadowOffset:  { width: 0, height: 4 },
-    shadowOpacity: 0.18,
-    shadowRadius:  10,
-    elevation:     5,
   },
 
   // Absolute fill layers (rendered before content, so they appear behind)
@@ -175,18 +165,14 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
   },
 
-  // Left glow bar
+  // Left accent bar — no glow, just a clean coloured strip
   leftBar: {
-    position:      'absolute',
-    left:          0,
-    top:           10,
-    bottom:        10,
-    width:         4,
-    borderRadius:  4,
-    // Glow effect (iOS only; Android gets elevation from card)
-    shadowOffset:  { width: 3, height: 0 },
-    shadowOpacity: 0.70,
-    shadowRadius:  8,
+    position:     'absolute',
+    left:         0,
+    top:          10,
+    bottom:       10,
+    width:        3,
+    borderRadius: 3,
   },
 
   // Main content row
@@ -200,35 +186,14 @@ const styles = StyleSheet.create({
     gap:            14,
   },
 
-  // Icon layers: outer → mid → inner
-  iconGlowOuter: {
-    width:          56,
-    height:         56,
-    borderRadius:   16,
-    alignItems:     'center',
-    justifyContent: 'center',
-    backgroundColor:'transparent',
-  },
-  iconGlowMid: {
-    width:          50,
-    height:         50,
-    borderRadius:   14,
-    alignItems:     'center',
-    justifyContent: 'center',
-  },
-  iconInner: {
+  // Icon — single clean box
+  iconBox: {
     width:          44,
     height:         44,
-    borderRadius:   13,
+    borderRadius:   12,
     borderWidth:    1,
     alignItems:     'center',
     justifyContent: 'center',
-    // Subtle inset shadow on iOS via elevation-like trick
-    shadowColor:   '#000',
-    shadowOffset:  { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius:  4,
-    elevation:     2,
   },
   iconEmoji: {
     fontSize: 22,
