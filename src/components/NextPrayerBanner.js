@@ -222,6 +222,8 @@ export default function NextPrayerBanner({
   time,
   endTime,
   countdown,
+  currentPrayer,
+  endCountdown,
   meta,
   hijriDate,
   gregorianDate,
@@ -299,12 +301,19 @@ export default function NextPrayerBanner({
                 <Text style={styles.arabicName}>{meta.arabic}</Text>
               ) : null}
               <Text style={styles.bigTime}>{time}</Text>
-              <Text style={styles.countdown}>
-                will start in {naturalCountdown(countdown)}
-              </Text>
-              {endTime ? (
-                <Text style={styles.endTime}>ends at {endTime}</Text>
-              ) : null}
+              {/* Live end countdown — "Isha waqt ends in 02:26:15" */}
+              {currentPrayer ? (
+                <View style={styles.endCountdownRow}>
+                  <Text style={styles.endLabel}>
+                    {currentPrayer.name} waqt ends in{'  '}
+                  </Text>
+                  <Text style={styles.endTicker}>{endCountdown}</Text>
+                </View>
+              ) : (
+                <Text style={styles.countdown}>
+                  will start in {naturalCountdown(countdown)}
+                </Text>
+              )}
             </View>
 
           </View>
@@ -431,12 +440,35 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
 
-  // End time
+  // End time (legacy, kept for fallback)
   endTime: {
     color:         'rgba(255,255,255,0.50)',
     fontSize:      11,
     letterSpacing: 0.2,
     marginTop:     2,
+  },
+
+  // Live end countdown row — "Isha waqt ends in 02:26:15"
+  endCountdownRow: {
+    flexDirection:  'row',
+    alignItems:     'baseline',
+    marginTop:      2,
+  },
+  endLabel: {
+    color:         'rgba(255,255,255,0.65)',
+    fontSize:      11,
+    fontWeight:    '500',
+    letterSpacing: 0.3,
+  },
+  endTicker: {
+    color:          '#FFD700',
+    fontSize:       14,
+    fontWeight:     '800',
+    letterSpacing:  1.5,
+    fontVariant:    ['tabular-nums'],
+    textShadowColor:  'rgba(255,215,0,0.4)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 6,
   },
 
   // Page dots
