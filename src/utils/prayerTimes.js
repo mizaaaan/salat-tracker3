@@ -102,3 +102,29 @@ export const getCountdown = (targetDate) => {
   const s = Math.floor((diff % 60_000) / 1_000);
   return [h, m, s].map((n) => String(n).padStart(2, '0')).join(':');
 };
+
+/**
+ * Returns the CURRENT active prayer and the Date when it ends.
+ * e.g. if it's 12:30 PM → { name: 'Dhuhr', endsAt: <Asr Date> }
+ *
+ * PRAYER_END_ORDER: each prayer ends when the next one begins.
+ * Isha ends at tomorrow's Fajr, so caller should pass tomorrowFajr.
+ */
+export const getCurrentPrayer = (prayerTimes, tomorrowFajr = null) => {
+  const now    = new Date();
+  const order  = ['Fajr', 'Sunrise', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'];
+
+  for (let i = order.length - 1; i >= 0; i--) {
+    const name      = order[i];
+    const startTime = prayerTimes[name];
+    if (startTime && now >= startTime) {
+      // Found the current prayer — its end time is the next prayer's start
+      const nextName    = order[i + 1];
+      const nextStart   = nextName ? prayerTimes[nextName] : null;
+      const endsAt      = nextStart ?? tomorrowFajr ?? null;
+      return { name, endsAt };
+    }
+  }
+  // Before Fajr — still in Isha from yesterday (or no data)
+  return null;
+};
