@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
   Image, Dimensions,
@@ -10,8 +10,8 @@ import Svg, {
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
-// ── Card dimensions ───────────────────────────────────────────────────────────
-const CARD_W = SCREEN_W - 32;
+// ── Landscape card dimensions ─────────────────────────────────────────────────
+const CARD_W = SCREEN_W - 32;           // full width minus small margins
 
 // ── Prayer background images ──────────────────────────────────────────────────
 const PRAYER_IMAGES = {
@@ -32,12 +32,13 @@ const PRAYER_TINT = {
   Isha:    'rgba(5,   5,  18, 0.38)',
 };
 
-// ── Arc geometry ──────────────────────────────────────────────────────────────
+// ── Arc geometry — ELLIPTICAL arc that fits inside the card ───────────────────
 const ARC_W   = CARD_W - 48;
 const LEFT_X  = 10;
 const RIGHT_X = ARC_W - 10;
-const ARC_RX  = (RIGHT_X - LEFT_X) / 2;
-const ARC_RY  = ARC_RX;
+
+const ARC_RX  = (RIGHT_X - LEFT_X) / 2;   // horizontal radius
+const ARC_RY  = ARC_RX;                    // perfect semicircle: vertical = horizontal radius
 const ARC_CX  = (LEFT_X + RIGHT_X) / 2;
 const BASE_Y  = ARC_RY + 8;
 const ARC_H   = BASE_Y + 8;
@@ -50,167 +51,90 @@ function arcPointAt(t) {
   return { x, y };
 }
 
-// ── Sun/Moon arc: day = Fajr→Maghrib, night = Maghrib→nextFajr ───────────────
-function calcArcState(fajr, maghrib, nextFajr) {
+// ── Day/night arc progress ─────────────────────────────────────────────────
+// Day:   Fajr  -> Maghrib  → sun travels the arc
+// Night: Maghrib -> next Fajr → moon travels the SAME arc
+function calcArcState(fajrTime, maghribTime, nextFajrTime) {
   const now = new Date();
 
-  const F = fajr    instanceof Date ? fajr    : (() => { const d = new Date(); d.setHours(5,0,0,0);  return d; })();
-  const M = maghrib instanceof Date ? maghrib : (() => { const d = new Date(); d.setHours(19,0,0,0); return d; })();
-  const N = nextFajr instanceof Date ? nextFajr : new Date(F.getTime() + 86400000);
+  const fajr = (fajrTime instanceof Date) ? fajrTime : (() => {
+    const d = new Date(); d.setHours(5, 0, 0, 0); return d;
+  })();
+  const maghrib = (maghribTime instanceof Date) ? maghribTime : (() => {
+    const d = new Date(); d.setHours(19, 0, 0, 0); return d;
+  })();
+  const nextFajr = (nextFajrTime instanceof Date) ? nextFajrTime : (() => {
+    const d = new Date(fajr); d.setDate(d.getDate() + 1); return d;
+  })();
 
-  if (now >= F && now < M) {
-    return { isDay: true, t: Math.max(0.03, Math.min(0.97, (now - F) / (M - F))) };
+  if (now >= fajr && now < maghrib) {
+    // Daytime
+    const t = (now - fajr) / (maghrib - fajr);
+    return { isDay: true, t: Math.max(0.03, Math.min(0.97, t)) };
   }
 
-  let wStart = M, wEnd = N;
-  if (now < F) {
-    wEnd   = F;
-    wStart = new Date(F.getTime() - (N - M));
+  // Nighttime — handle the two cases: tonight (after Maghrib) and
+  // the tail end of last night (after midnight, before today's Fajr).
+  let windowStart = maghrib;
+  let windowEnd   = nextFajr;
+
+  if (now < fajr) {
+    // Still in the previous night's window — approximate "yesterday's
+    // Maghrib" using tonight's Maghrib→Fajr duration as a proxy
+    // (night length barely shifts day to day).
+    windowEnd   = fajr;
+    windowStart = new Date(fajr.getTime() - (nextFajr - maghrib));
   }
-  return { isDay: false, t: Math.max(0.03, Math.min(0.97, (now - wStart) / (wEnd - wStart))) };
+
+  const t = (now - windowStart) / (windowEnd - windowStart);
+  return { isDay: false, t: Math.max(0.03, Math.min(0.97, t)) };
 }
 
-// ── Moon phase (no API) ───────────────────────────────────────────────────────
-function getMoonPhase(date = new Date()) {
-  const synodic   = 29.53058867;
-  const refNewMoon = Date.UTC(2000, 0, 6, 18, 14, 0);
-  let p = ((date.getTime() - refNewMoon) / 86400000 % synodic) / synodic;
-  if (p < 0) p += 1;
-  return p;
+// ── Real moon phase for tonight, no external API ─────────────────────────────
+// Returns p in [0, 1): 0 = new moon, 0.25 = first quarter,
+// 0.5 = full moon, 0.75 = last quarter.
+function getMoonPhaseFraction(date = new Date()) {
+  const synodicMonth = 29.53058867; // days
+  const knownNewMoon  = Date.UTC(2000, 0, 6, 18, 14, 0);
+  const diffDays = (date.getTime() - knownNewMoon) / 86400000;
+  let phase = (diffDays % synodicMonth) / synodicMonth;
+  if (phase < 0) phase += 1;
+  return phase;
 }
 
+function getMoonPhaseName(p) {
+  if (p < 0.03 || p > 0.97) return 'New Moon';
+  if (p < 0.22) return 'Waxing Crescent';
+  if (p < 0.28) return 'First Quarter';
+  if (p < 0.47) return 'Waxing Gibbous';
+  if (p < 0.53) return 'Full Moon';
+  if (p < 0.72) return 'Waning Gibbous';
+  if (p < 0.78) return 'Last Quarter';
+  return 'Waning Crescent';
+}
+
+// Builds the SVG path for the moon's *lit* sliver at phase p, radius r,
+// centered at (cx, cy). Draw a full dark disc first, then this on top.
 function buildMoonPath(cx, cy, r, p) {
-  const rx = r * Math.cos(p * 2 * Math.PI);
+  const theta = p * 2 * Math.PI;
+  const rx = r * Math.cos(theta); // signed horizontal radius of terminator ellipse
+  const outerSweep       = p < 0.5 ? 1 : 0;
+  const terminatorSweep  = (p < 0.25 || p > 0.75) ? 1 : 0;
+
   return [
     `M ${cx} ${cy - r}`,
-    `A ${r} ${r} 0 0 ${p < 0.5 ? 1 : 0} ${cx} ${cy + r}`,
-    `A ${Math.abs(rx)} ${r} 0 0 ${(p < 0.25 || p > 0.75) ? 1 : 0} ${cx} ${cy - r}`,
+    `A ${r} ${r} 0 0 ${outerSweep} ${cx} ${cy + r}`,
+    `A ${Math.abs(rx)} ${r} 0 0 ${terminatorSweep} ${cx} ${cy - r}`,
     'Z',
   ].join(' ');
 }
 
-// ── Format HH:mm:ss ───────────────────────────────────────────────────────────
-function formatHMS(ms) {
-  if (ms <= 0) return '00:00:00';
-  const s = Math.floor(ms / 1000);
-  return [Math.floor(s / 3600), Math.floor((s % 3600) / 60), s % 60]
-    .map(n => String(n).padStart(2, '0'))
-    .join(':');
-}
-
-// ── Format time for display ───────────────────────────────────────────────────
-function fmt(date) {
-  if (!date) return '--:--';
-  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
-}
-
-// ── THE BRAIN: computes all display state from current time + prayer times ────
-//
-//  States:
-//   • Pre-Fajr   → bgName=Isha,    displayName=Fajr,    mode='next',   countdown to Fajr
-//   • Fajr win.  → bgName=Fajr,    displayName=Fajr,    mode='active', countdown to Sunrise
-//   • Gap        → bgName=Sunrise, displayName=Dhuhr,   mode='next',   countdown to Dhuhr
-//   • Dhuhr win. → bgName=Dhuhr,   displayName=Dhuhr,   mode='active', countdown to Asr
-//   • Asr win.   → bgName=Asr,     displayName=Asr,     mode='active', countdown to Maghrib
-//   • Maghrib w. → bgName=Maghrib, displayName=Maghrib, mode='active', countdown to Isha
-//   • Isha win.  → bgName=Isha,    displayName=Isha,    mode='active', countdown to nextFajr
-//
-function calcBannerState(prayerTimes, nextFajrTime) {
-  if (!prayerTimes) return null;
-  const now = new Date();
-  const { Fajr, Sunrise, Dhuhr, Asr, Maghrib, Isha } = prayerTimes;
-
-  // Pre-Fajr — still night, next is Fajr
-  if (now < Fajr) {
-    return {
-      bgName: 'Isha',
-      displayName: 'Fajr',
-      arabic: 'الفجر',
-      bigTime: fmt(Fajr),
-      mode: 'next',
-      countdown: formatHMS(Fajr - now),
-      nextName: null,
-    };
-  }
-
-  // Fajr window → Sunrise
-  if (now < Sunrise) {
-    return {
-      bgName: 'Fajr',
-      displayName: 'Fajr',
-      arabic: 'الفجر',
-      bigTime: fmt(Fajr),
-      mode: 'active',
-      countdown: formatHMS(Sunrise - now),
-      nextName: 'Sunrise',
-    };
-  }
-
-  // Post-Fajr gap → Dhuhr (Ishraq / Duha time)
-  if (now < Dhuhr) {
-    return {
-      bgName: 'Sunrise',
-      displayName: 'Dhuhr',
-      arabic: 'الظهر',
-      bigTime: fmt(Dhuhr),
-      mode: 'next',
-      countdown: formatHMS(Dhuhr - now),
-      nextName: null,
-    };
-  }
-
-  // Dhuhr window → Asr
-  if (now < Asr) {
-    return {
-      bgName: 'Dhuhr',
-      displayName: 'Dhuhr',
-      arabic: 'الظهر',
-      bigTime: fmt(Dhuhr),
-      mode: 'active',
-      countdown: formatHMS(Asr - now),
-      nextName: 'Asr',
-    };
-  }
-
-  // Asr window → Maghrib
-  if (now < Maghrib) {
-    return {
-      bgName: 'Asr',
-      displayName: 'Asr',
-      arabic: 'العصر',
-      bigTime: fmt(Asr),
-      mode: 'active',
-      countdown: formatHMS(Maghrib - now),
-      nextName: 'Maghrib',
-    };
-  }
-
-  // Maghrib window → Isha
-  if (now < Isha) {
-    return {
-      bgName: 'Maghrib',
-      displayName: 'Maghrib',
-      arabic: 'المغرب',
-      bigTime: fmt(Maghrib),
-      mode: 'active',
-      countdown: formatHMS(Isha - now),
-      nextName: 'Isha',
-    };
-  }
-
-  // Isha window → next Fajr
-  const tFajr = nextFajrTime instanceof Date
-    ? nextFajrTime
-    : new Date(Fajr.getTime() + 86400000);
-  return {
-    bgName: 'Isha',
-    displayName: 'Isha',
-    arabic: 'العشاء',
-    bigTime: fmt(Isha),
-    mode: 'active',
-    countdown: formatHMS(tFajr - now),
-    nextName: 'Fajr',
-  };
+function naturalCountdown(cd) {
+  const [h, m, s] = (cd || '00:00:00').split(':').map(Number);
+  if (h > 0 && m > 0) return `${h}h ${m}m`;
+  if (h > 0)           return `${h} hour${h !== 1 ? 's' : ''}`;
+  if (m > 0)           return `${m} minute${m !== 1 ? 's' : ''}`;
+  return `${s}s`;
 }
 
 // ── Gradient overlay ──────────────────────────────────────────────────────────
@@ -235,24 +159,29 @@ function GradientOverlay() {
   );
 }
 
-// ── Celestial arc (sun day / moon night) ──────────────────────────────────────
+// ── Flat ellipse arc + sun (day) / moon (night) ───────────────────────────────
 function CelestialArc({ isDay, t, moonPhase }) {
   const body = arcPointAt(t);
-  const d    = `M ${LEFT_X} ${BASE_Y} A ${ARC_RX} ${ARC_RY} 0 0 1 ${RIGHT_X} ${BASE_Y}`;
-  const sc   = isDay ? 'rgba(255,255,255' : 'rgba(170,185,235';
+  // Large-arc=1, sweep=1 → correct upper ellipse arc
+  const d = `M ${LEFT_X} ${BASE_Y} A ${ARC_RX} ${ARC_RY} 0 0 1 ${RIGHT_X} ${BASE_Y}`;
+
+  const strokeColor = isDay ? 'rgba(255,255,255' : 'rgba(170,185,235';
 
   return (
     <Svg width={ARC_W} height={ARC_H}>
-      <Path d={d} fill="none" stroke={`${sc},0.12)`} strokeWidth={10} strokeLinecap="round" />
-      <Path d={d} fill="none" stroke={`${sc},0.25)`} strokeWidth={5}  strokeLinecap="round" />
-      <Path d={d} fill="none" stroke={`${sc},0.90)`} strokeWidth={2}  strokeLinecap="round" />
+      {/* Glow layers */}
+      <Path d={d} fill="none" stroke={`${strokeColor},0.12)`} strokeWidth={10} strokeLinecap="round" />
+      <Path d={d} fill="none" stroke={`${strokeColor},0.25)`} strokeWidth={5}  strokeLinecap="round" />
+      <Path d={d} fill="none" stroke={`${strokeColor},0.90)`} strokeWidth={2}  strokeLinecap="round" />
 
-      <Circle cx={LEFT_X}  cy={BASE_Y} r={6} fill={`${sc},0.18)`} />
-      <Circle cx={LEFT_X}  cy={BASE_Y} r={4} fill={`${sc},0.75)`} />
-      <Circle cx={RIGHT_X} cy={BASE_Y} r={6} fill={`${sc},0.18)`} />
-      <Circle cx={RIGHT_X} cy={BASE_Y} r={4} fill={`${sc},0.75)`} />
+      {/* Endpoint dots */}
+      <Circle cx={LEFT_X}  cy={BASE_Y} r={6}   fill={`${strokeColor},0.18)`} />
+      <Circle cx={LEFT_X}  cy={BASE_Y} r={4}   fill={`${strokeColor},0.75)`} />
+      <Circle cx={RIGHT_X} cy={BASE_Y} r={6}   fill={`${strokeColor},0.18)`} />
+      <Circle cx={RIGHT_X} cy={BASE_Y} r={4}   fill={`${strokeColor},0.75)`} />
 
       {isDay ? (
+        // ── Sun ──
         <>
           <Circle cx={body.x} cy={body.y} r={18}  fill="rgba(255,200,0,0.12)" />
           <Circle cx={body.x} cy={body.y} r={12}  fill="rgba(255,195,0,0.24)" />
@@ -261,10 +190,11 @@ function CelestialArc({ isDay, t, moonPhase }) {
           <Circle cx={body.x} cy={body.y} r={2.5} fill="#FFFDE7" />
         </>
       ) : (
+        // ── Moon — real phase for tonight ──
         <>
-          <Circle cx={body.x} cy={body.y} r={16} fill="rgba(190,205,245,0.10)" />
-          <Circle cx={body.x} cy={body.y} r={11} fill="rgba(190,205,245,0.18)" />
-          <Circle cx={body.x} cy={body.y} r={8}  fill="#3A4368" />
+          <Circle cx={body.x} cy={body.y} r={16}  fill="rgba(190,205,245,0.10)" />
+          <Circle cx={body.x} cy={body.y} r={11}  fill="rgba(190,205,245,0.18)" />
+          <Circle cx={body.x} cy={body.y} r={8}   fill="#3A4368" />
           <Path d={buildMoonPath(body.x, body.y, 8, moonPhase)} fill="#F4F1E8" />
         </>
       )}
@@ -275,10 +205,8 @@ function CelestialArc({ isDay, t, moonPhase }) {
 // ── Page dots ─────────────────────────────────────────────────────────────────
 const TRACKABLE = ['Fajr', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'];
 
-function PageDots({ activeName }) {
-  // During Sunrise gap show Dhuhr dot (1); all others map directly
-  const name   = activeName === 'Sunrise' ? 'Dhuhr' : activeName;
-  const active = Math.max(0, TRACKABLE.indexOf(name));
+function PageDots({ prayerName }) {
+  const active = Math.max(0, TRACKABLE.indexOf(prayerName));
   return (
     <View style={styles.dotsRow}>
       {TRACKABLE.map((_, i) => (
@@ -289,68 +217,56 @@ function PageDots({ activeName }) {
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-//
-// Props:
-//   prayerTimes     { Fajr, Sunrise, Dhuhr, Asr, Maghrib, Isha }  (Date objects)
-//   nextFajrTime    Date   tomorrow's Fajr (for Isha→Fajr countdown)
-//   hijriDate       string
-//   gregorianDate   string
-//   location        string (city name)
-//   onLocationPress function
-//
 export default function NextPrayerBanner({
-  prayerTimes,
-  nextFajrTime,
+  name,
+  time,
+  endTime,
+  countdown,
+  currentPrayer,
+  endCountdown,
+  meta,
   hijriDate,
   gregorianDate,
   location,
+  fajrTime,
+  maghribTime,
+  nextFajrTime,
   onLocationPress,
 }) {
+  const bgImage  = PRAYER_IMAGES[name] ?? PRAYER_IMAGES.Fajr;
+  const tint     = PRAYER_TINT[name]   ?? PRAYER_TINT.Fajr;
   const locLabel = location || 'Local';
 
-  // ── 1-second live state ────────────────────────────────────────────────────
-  const [state, setState] = useState(() => calcBannerState(prayerTimes, nextFajrTime));
-
+  const [arc, setArc] = useState(() => calcArcState(fajrTime, maghribTime, nextFajrTime));
   useEffect(() => {
-    // Recompute immediately whenever prayerTimes changes
-    setState(calcBannerState(prayerTimes, nextFajrTime));
-
-    // Then tick every second — countdown updates + auto-phase transition at 0
-    const id = setInterval(() => {
-      setState(calcBannerState(prayerTimes, nextFajrTime));
-    }, 1000);
-
+    setArc(calcArcState(fajrTime, maghribTime, nextFajrTime));
+    const id = setInterval(
+      () => setArc(calcArcState(fajrTime, maghribTime, nextFajrTime)),
+      60_000
+    );
     return () => clearInterval(id);
-  }, [prayerTimes, nextFajrTime]);
+  }, [fajrTime, maghribTime, nextFajrTime]);
 
-  // ── Arc (updates every minute — sun/moon moves slowly) ────────────────────
-  const [arc, setArc] = useState(() =>
-    calcArcState(prayerTimes?.Fajr, prayerTimes?.Maghrib, nextFajrTime)
-  );
-  useEffect(() => {
-    setArc(calcArcState(prayerTimes?.Fajr, prayerTimes?.Maghrib, nextFajrTime));
-    const id = setInterval(() => {
-      setArc(calcArcState(prayerTimes?.Fajr, prayerTimes?.Maghrib, nextFajrTime));
-    }, 60_000);
-    return () => clearInterval(id);
-  }, [prayerTimes, nextFajrTime]);
-
-  const moonPhase = arc.isDay ? 0 : getMoonPhase();
-
-  if (!state) return null;
-
-  const bgImage = PRAYER_IMAGES[state.bgName] ?? PRAYER_IMAGES.Fajr;
-  const tint    = PRAYER_TINT[state.bgName]   ?? PRAYER_TINT.Fajr;
+  const moonPhase = arc.isDay ? 0 : getMoonPhaseFraction(new Date());
 
   return (
     <View style={styles.shadow}>
       <View style={styles.card}>
 
-        {/* Background */}
-        <Image source={bgImage} style={StyleSheet.absoluteFill} resizeMode="cover" />
+        {/* Background image — landscape fill */}
+        <Image
+          source={bgImage}
+          style={StyleSheet.absoluteFill}
+          resizeMode="cover"
+        />
+
+        {/* Mood tint */}
         <View style={[StyleSheet.absoluteFill, { backgroundColor: tint }]} />
+
+        {/* Gradient */}
         <GradientOverlay />
 
+        {/* ══ CONTENT ══════════════════════════════════════════════════════ */}
         <View style={styles.overlay}>
 
           {/* Top bar */}
@@ -366,66 +282,53 @@ export default function NextPrayerBanner({
             <Text style={styles.topDate}>{gregorianDate}</Text>
           </View>
 
+          {/* Small spacer */}
           <View style={{ height: 10 }} />
 
-          {/* Arc + info block */}
+          {/* ── Arc + Info block ──────────────────────────────────────────── */}
           <View style={styles.arcContainer}>
+
+            {/* Flat arc SVG */}
             <View style={styles.arcWrap}>
               <CelestialArc isDay={arc.isDay} t={arc.t} moonPhase={moonPhase} />
             </View>
 
-            {/* Info overlaid inside arc */}
+            {/* Prayer info INSIDE the arc — absolutely positioned */}
             <View style={styles.arcInfoOverlay}>
-
-              {/* Hijri date */}
               <Text style={styles.hijriDate}>{hijriDate}</Text>
-
-              {/* Prayer name */}
-              <Text style={styles.prayerName}>{state.displayName.toUpperCase()}</Text>
-
-              {/* Arabic name */}
-              {!!state.arabic && (
-                <Text style={styles.arabicName}>{state.arabic}</Text>
-              )}
-
-              {/* Big clock time */}
-              <Text style={styles.bigTime}>{state.bigTime}</Text>
-
-              {/* ── Live countdown row ─────────────────────────────────── */}
-              {state.mode === 'active' ? (
-                // During an active prayer window:
-                // "[NextName]  HH:mm:ss" — shows next prayer + live countdown
-                <View style={styles.countdownRow}>
-                  <Text style={styles.countdownLabel}>
-                    {state.nextName}
+              <Text style={styles.prayerName}>{name}</Text>
+              {meta?.arabic ? (
+                <Text style={styles.arabicName}>{meta.arabic}</Text>
+              ) : null}
+              <Text style={styles.bigTime}>{time}</Text>
+              {/* Live end countdown — "Isha waqt ends in 02:26:15" */}
+              {currentPrayer ? (
+                <View style={styles.endCountdownRow}>
+                  <Text style={styles.endLabel}>
+                    {currentPrayer.name} waqt ends in{'  '}
                   </Text>
-                  <Text style={styles.countdownSep}>·</Text>
-                  <Text style={styles.countdownTicker}>{state.countdown}</Text>
+                  <Text style={styles.endTicker}>{endCountdown}</Text>
                 </View>
               ) : (
-                // Between windows / pre-Fajr:
-                // "Starts in  HH:mm:ss"
-                <View style={styles.countdownRow}>
-                  <Text style={styles.countdownLabel}>Starts in</Text>
-                  <Text style={styles.countdownSep}>·</Text>
-                  <Text style={styles.countdownTicker}>{state.countdown}</Text>
-                </View>
+                <Text style={styles.countdown}>
+                  will start in {naturalCountdown(countdown)}
+                </Text>
               )}
-
             </View>
+
           </View>
 
           {/* Page dots */}
-          <PageDots activeName={state.displayName} />
-          <View style={{ height: 10 }} />
+          <PageDots prayerName={name} />
 
+          <View style={{ height: 10 }} />
         </View>
+
       </View>
     </View>
   );
 }
 
-// ── Styles ────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   shadow: {
     marginHorizontal: 16,
@@ -440,7 +343,7 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: 20,
     overflow:     'hidden',
-    height:       CARD_H,
+    height:       CARD_H,   // ← landscape height (62% of card width)
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
@@ -470,8 +373,15 @@ const styles = StyleSheet.create({
   locationIcon:  { fontSize: 12 },
   locationLabel: { color: '#fff', fontSize: 12, fontWeight: '600' },
   topDate:       { color: '#fff', fontSize: 12, fontWeight: '700' },
+  hijriDate:     {
+    color:         'rgba(255,255,255,0.65)',
+    fontSize:      11,
+    fontWeight:    '600',
+    letterSpacing: 0.5,
+    marginBottom:  4,
+  },
 
-  // Arc
+  // Arc container
   arcContainer: {
     width:      '100%',
     position:   'relative',
@@ -482,7 +392,7 @@ const styles = StyleSheet.create({
     width:      '100%',
   },
 
-  // Info overlay inside arc
+  // Prayer info INSIDE arc — absolutely placed
   arcInfoOverlay: {
     position:   'absolute',
     bottom:     16,
@@ -491,14 +401,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
-  hijriDate: {
-    color:         'rgba(255,255,255,0.60)',
-    fontSize:      11,
-    fontWeight:    '600',
-    letterSpacing: 0.5,
-    marginBottom:  4,
-  },
-
+  // Prayer name
   prayerName: {
     color:         'rgba(255,255,255,0.88)',
     fontSize:      13,
@@ -508,6 +411,7 @@ const styles = StyleSheet.create({
     marginBottom:  1,
   },
 
+  // Arabic name
   arabicName: {
     color:         'rgba(255,255,255,0.70)',
     fontSize:      16,
@@ -516,6 +420,7 @@ const styles = StyleSheet.create({
     marginBottom:  2,
   },
 
+  // Big time
   bigTime: {
     color:            '#fff',
     fontSize:         32,
@@ -525,35 +430,45 @@ const styles = StyleSheet.create({
     textShadowColor:  'rgba(0,0,0,0.4)',
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 6,
-    marginBottom:     4,
+    marginBottom:     1,
   },
 
-  // ── Live countdown row ────────────────────────────────────────────────────
-  countdownRow: {
-    flexDirection: 'row',
-    alignItems:    'baseline',
-    gap:           6,
-  },
-  countdownLabel: {
-    color:         'rgba(255,255,255,0.60)',
+  // Countdown
+  countdown: {
+    color:         'rgba(255,255,255,0.75)',
     fontSize:      12,
+    letterSpacing: 0.2,
+  },
+
+  // End time (legacy, kept for fallback)
+  endTime: {
+    color:         'rgba(255,255,255,0.50)',
+    fontSize:      11,
+    letterSpacing: 0.2,
+    marginTop:     2,
+  },
+
+  // Live end countdown row — "Isha waqt ends in 02:26:15"
+  endCountdownRow: {
+    flexDirection:  'row',
+    alignItems:     'baseline',
+    marginTop:      2,
+  },
+  endLabel: {
+    color:         'rgba(255,255,255,0.65)',
+    fontSize:      11,
     fontWeight:    '500',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
+    letterSpacing: 0.3,
   },
-  countdownSep: {
-    color:   'rgba(255,255,255,0.30)',
-    fontSize: 11,
-  },
-  countdownTicker: {
-    color:           '#FFD700',
-    fontSize:        15,
-    fontWeight:      '800',
-    letterSpacing:   1.8,
-    fontVariant:     ['tabular-nums'],
-    textShadowColor:  'rgba(255,215,0,0.45)',
+  endTicker: {
+    color:          '#FFD700',
+    fontSize:       14,
+    fontWeight:     '800',
+    letterSpacing:  1.5,
+    fontVariant:    ['tabular-nums'],
+    textShadowColor:  'rgba(255,215,0,0.4)',
     textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 8,
+    textShadowRadius: 6,
   },
 
   // Page dots
