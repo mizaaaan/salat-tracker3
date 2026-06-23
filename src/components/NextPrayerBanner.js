@@ -129,6 +129,41 @@ function buildMoonPath(cx, cy, r, p) {
   ].join(' ');
 }
 
+// ── Live prayer state — recalculated every second ────────────────────────────
+// Returns: { displayName, label, hms } or null if allPrayerTimes not provided
+function calcLiveState(times, nextFajrTime) {
+  if (!times?.Fajr) return null;
+  const now = new Date();
+  const { Fajr, Sunrise, Dhuhr, Asr, Maghrib, Isha } = times;
+  let displayName, nextBoundary, label;
+
+  if (now < Fajr) {
+    displayName = 'Fajr';    nextBoundary = Fajr;    label = 'starts in';
+  } else if (now < Sunrise) {
+    displayName = 'Fajr';    nextBoundary = Sunrise;  label = 'waqt ends in';
+  } else if (now < Dhuhr) {
+    displayName = 'Dhuhr';   nextBoundary = Dhuhr;   label = 'starts in';
+  } else if (now < Asr) {
+    displayName = 'Dhuhr';   nextBoundary = Asr;     label = 'waqt ends in';
+  } else if (now < Maghrib) {
+    displayName = 'Asr';     nextBoundary = Maghrib;  label = 'waqt ends in';
+  } else if (now < Isha) {
+    displayName = 'Maghrib'; nextBoundary = Isha;    label = 'waqt ends in';
+  } else {
+    const tomorrow = (nextFajrTime instanceof Date)
+      ? nextFajrTime
+      : new Date(Fajr.getTime() + 86400000);
+    displayName = 'Isha'; nextBoundary = tomorrow; label = 'waqt ends in';
+  }
+
+  const ms = Math.max(0, nextBoundary - now);
+  const h  = Math.floor(ms / 3600000);
+  const m  = Math.floor((ms % 3600000) / 60000);
+  const s  = Math.floor((ms % 60000)   / 1000);
+  const hms = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  return { displayName, label, hms };
+}
+
 function naturalCountdown(cd) {
   const [h, m, s] = (cd || '00:00:00').split(':').map(Number);
   if (h > 0 && m > 0) return `${h}h ${m}m`;
@@ -232,9 +267,8 @@ export default function NextPrayerBanner({
   maghribTime,
   nextFajrTime,
   onLocationPress,
+  allPrayerTimes,       // ← NEW: full { Fajr, Sunrise, Dhuhr, Asr, Maghrib, Isha } Date objects
 }) {
-  const bgImage  = PRAYER_IMAGES[name] ?? PRAYER_IMAGES.Fajr;
-  const tint     = PRAYER_TINT[name]   ?? PRAYER_TINT.Fajr;
   const locLabel = location || 'Local';
 
   const [arc, setArc] = useState(() => calcArcState(fajrTime, maghribTime, nextFajrTime));
@@ -246,6 +280,21 @@ export default function NextPrayerBanner({
     );
     return () => clearInterval(id);
   }, [fajrTime, maghribTime, nextFajrTime]);
+
+  // Live prayer countdown — ticks every second
+  const [live, setLive] = useState(() => calcLiveState(allPrayerTimes, nextFajrTime));
+  useEffect(() => {
+    if (!allPrayerTimes) return;
+    const tick = () => setLive(calcLiveState(allPrayerTimes, nextFajrTime));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [allPrayerTimes, nextFajrTime]);
+
+  // Derived display values — use live state when available, fall back to props
+  const displayName = live?.displayName ?? name;
+  const bgImage     = PRAYER_IMAGES[displayName] ?? PRAYER_IMAGES.Fajr;
+  const tint        = PRAYER_TINT[displayName]   ?? PRAYER_TINT.Fajr;
 
   const moonPhase = arc.isDay ? 0 : getMoonPhaseFraction(new Date());
 
@@ -296,22 +345,25 @@ export default function NextPrayerBanner({
             {/* Prayer info INSIDE the arc — absolutely positioned */}
             <View style={styles.arcInfoOverlay}>
               <Text style={styles.hijriDate}>{hijriDate}</Text>
-              <Text style={styles.prayerName}>{name}</Text>
+              <Text style={styles.prayerName}>{displayName}</Text>
               {meta?.arabic ? (
                 <Text style={styles.arabicName}>{meta.arabic}</Text>
               ) : null}
               <Text style={styles.bigTime}>{time}</Text>
-              {/* Live end countdown — "Isha waqt ends in 02:26:15" */}
-              {currentPrayer ? (
-                <View style={styles.endCountdownRow}>
-                  <Text style={styles.endLabel}>
-                    {currentPrayer.name} waqt ends in{'  '}
-                  </Text>
-                  <Text style={styles.endTicker}>{endCountdown}</Text>
+              {/* Live countdown — auto-switches prayer period every second */}
+              {live ? (
+                <View style={styles.liveBlock}>
+                  <Text style={styles.liveLabel}>{live.label}</Text>
+                  <Text style={styles.liveTicker}>{live.hms}</Text>
+                </View>
+              ) : currentPrayer ? (
+                <View style={styles.liveBlock}>
+                  <Text style={styles.liveLabel}>waqt ends in</Text>
+                  <Text style={styles.liveTicker}>{endCountdown}</Text>
                 </View>
               ) : (
                 <Text style={styles.countdown}>
-                  will start in {naturalCountdown(countdown)}
+                  starts in {naturalCountdown(countdown)}
                 </Text>
               )}
             </View>
@@ -319,7 +371,7 @@ export default function NextPrayerBanner({
           </View>
 
           {/* Page dots */}
-          <PageDots prayerName={name} />
+          <PageDots prayerName={displayName} />
 
           <View style={{ height: 10 }} />
         </View>
@@ -448,28 +500,33 @@ const styles = StyleSheet.create({
     marginTop:     2,
   },
 
-  // Live end countdown row — "Isha waqt ends in 02:26:15"
-  endCountdownRow: {
-    flexDirection:  'row',
-    alignItems:     'baseline',
-    marginTop:      2,
+  // Live countdown block — stacked vertically like reference image
+  liveBlock: {
+    alignItems:  'center',
+    marginTop:   3,
   },
-  endLabel: {
-    color:         'rgba(255,255,255,0.65)',
+  liveLabel: {
+    color:         'rgba(255,255,255,0.60)',
     fontSize:      11,
     fontWeight:    '500',
-    letterSpacing: 0.3,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    marginBottom:  2,
   },
-  endTicker: {
-    color:          '#FFD700',
-    fontSize:       14,
-    fontWeight:     '800',
-    letterSpacing:  1.5,
-    fontVariant:    ['tabular-nums'],
-    textShadowColor:  'rgba(255,215,0,0.4)',
+  liveTicker: {
+    color:            '#FFD700',
+    fontSize:         22,
+    fontWeight:       '800',
+    letterSpacing:    2.5,
+    fontVariant:      ['tabular-nums'],
+    textShadowColor:  'rgba(255,215,0,0.50)',
     textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 6,
+    textShadowRadius: 8,
   },
+  // Legacy — kept for safety
+  endCountdownRow: { flexDirection: 'row', alignItems: 'baseline', marginTop: 2 },
+  endLabel: { color: 'rgba(255,255,255,0.65)', fontSize: 11, fontWeight: '500' },
+  endTicker: { color: '#FFD700', fontSize: 14, fontWeight: '800', letterSpacing: 1.5 },
 
   // Page dots
   dotsRow: {
