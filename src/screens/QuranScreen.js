@@ -21,6 +21,11 @@ import {
 } from 'react-native';
 import { useTheme } from '../constants/ThemeContext';
 
+// ── Bismillah ──────────────────────────────────────────────────────────────────
+const BISMILLAH = 'بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ';
+// Surah 9 (At-Tawbah) has no Bismillah
+const NO_BISMILLAH = new Set([9]);
+
 // ── API ────────────────────────────────────────────────────────────────────────
 const BASE = 'https://api.alquran.cloud/v1';
 
@@ -165,7 +170,14 @@ export default function QuranScreen() {
             english:       englishAyahs[i]?.text ?? '',
             bangla:        banglaAyahs[i]?.text  ?? '',
           }));
-          setAyahs(merged);
+
+          // Strip the first ayah (Bismillah) for every surah except At-Tawbah (9).
+          // The API always prepends it as ayah 1; we show it instead as the gold header.
+          const stripped = NO_BISMILLAH.has(surahMeta.number)
+            ? merged
+            : merged.slice(1);
+
+          setAyahs(stripped);
           setSurahStatus('ok');
         } else {
           setSurahStatus('error');
@@ -336,7 +348,14 @@ export default function QuranScreen() {
                 </Text>
               </View>
 
-
+              {/* Bismillah */}
+              {!NO_BISMILLAH.has(selected?.number) && (
+                <View style={styles.bismillahWrap}>
+                  <Text style={[styles.bismillah, { color: Colors.primary }]}>
+                    {BISMILLAH}
+                  </Text>
+                </View>
+              )}
             </View>
           }
           showsVerticalScrollIndicator={false}
@@ -499,6 +518,21 @@ const getStyles = (Colors) => StyleSheet.create({
   },
   toggleBtnTextOn: {
     color: Colors.primary,
+  },
+
+  // Bismillah
+  bismillahWrap: {
+    alignItems:        'center',
+    marginTop:         20,
+    marginBottom:      8,
+    paddingHorizontal: 24,
+  },
+  bismillah: {
+    fontSize:      22,
+    fontWeight:    '600',
+    textAlign:     'center',
+    letterSpacing: 1,
+    lineHeight:    36,
   },
 
   // Surah info strip
